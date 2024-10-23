@@ -1,0 +1,1264 @@
+---
+title: "Spotify_Analyse_Factorielle"
+output:
+  pdf_document:
+    toc: yes
+date: "2024-01-03"
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+
+```{r,include=F}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning= FALSE,
+                      message=FALSE,
+                      fig.align = "center"
+                      )
+```
+
+```{r}
+library(kableExtra)
+library(readxl)
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(corrplot)
+library(DT)
+library(knitr)
+library(factoextra)
+library(ggplot2)
+library(ggpubr)
+library(modelsummary)
+library(explor)
+library(gmodels)
+library(missMDA)
+library(naniar)
+library(ggridges) # pour les graphiques de densité décalés sur l'axe des ordonnées
+library(VIM)
+library(readr)# pour importer avec des espaces dans les noms de variables
+library(dplyr)# manipulation des base de données
+library(forcats)# manipulation de facteurs
+library(modelsummary)
+library(naniar)
+library(gmodels)
+library(Factoshiny)
+library(ggrepel)
+```
+
+
+```{r}
+df <- read.csv("data/spotify-2023.csv",sep=",",header=T)
+```
+
+```{r}
+df[,9] <- as.numeric(df[,9])
+df[,12] <- as.numeric(df[,12])
+df[,14] <- as.double(df[,14])
+```
+
+```{r}
+df$in_shazam_charts <- gsub(',','',df$in_shazam_charts)
+df$in_deezer_playlists <- gsub(',','',df$in_deezer_playlists)
+df$key <- ifelse(df$key == "", NA, df$key)
+```
+
+```{r}
+df1 <- kNN(df ,variable =c("streams","in_deezer_playlists","in_shazam_charts","key"),k = 10) #imputation des données manquantes
+```
+
+```{r}
+df1 <- df1[,-c(25:28)]
+```
+
+```{r}
+df1[,9] <- as.numeric(df1[,9])
+df1[,12] <- as.numeric(df1[,12])
+df1[,14] <- as.double(df1[,14])
+```
+
+\newpage
+
+# Présentation de la base de données
+
+## Variables
+
+Nous avons travaillé sur la base de données spotify contenant 953
+musiques et comportant 24 variables, dont 20 quantitatives et 4
+qualitatives.
+
+Les variables présentes dans la base de données sont : Nom de la musique
+et de l'artiste , nombre d'artistes présent sur la chanson, date de
+sortie , nombre de streams , nombre de playlist où la chanson est
+présente sur les différentes plateformes de streaming, classement dans
+les charts des différents services de streaming ainsi que certaines
+caractéristiques de la musique qui vont être l'étude principale de notre
+projet et qui sont :
+
+-   BPM (tempo de la musique)
+-   Key
+-   Mode (permet de distinguer les sons joyeux des sons mélancoliques ,
+    variable binaire)
+-   Danceability (permet de mesurer à quel point la musique est dansante
+    , valeur comprise entre 0 et 100)
+-   Valence (permet de mesurer à quel point une musique est positive,
+    valeur comprise entre 0 et 100)
+-   Energy (permet de mesurer le dynamisme/calme d'une musique, valeur
+    comprise entre 0 et 100)
+-   Acousticness (permet de mesurer le degré d'instrument
+    électronique/acoustique présent dans une musique, valeur comprise
+    entre 0 et 100, si valeur faible alors la musique utilise
+    principalement des instruments électroniques)
+-   Instrumentalness (permet de mesurer le degré de voix chantée dans la
+    musique, valeur comprise entre 0 et 100, si valeur forte alors la
+    musique n'est pas chantée)
+-   Liveness (permet de mesurer la probabilité que la musique soit
+    enregistrée en studio ou bien plutôt en direct , valeur comprise
+    entre 0 et 100, si valeur faible alors il y a de fortes chances que
+    la musique soit enregistrée en studio )
+-   Speechiness (permet de mesurer la présence de voix comme des
+    extraits de passages télévisées, de films , valeur comprise entre 0
+    et 100, si valeur faible alors il n'y pas d'éléments de discours)
+
+Nous avons décidé de choisir ces variables pour notre étude afin de
+répondre à la problématique suivante : Existe-t-il des relations entre
+les caractéristiques d'une musique ?
+
+## Valeurs manquantes
+
+```{r}
+gg_miss_var(df)
+```
+
+On voit qu'il y a 95 valeurs manquantes dans key, 79 dans
+deezer_playlist, 57 dans shazam_charts et 1 dans streams, ce qui fait au total 
+232 valeurs manquantes.
+
+# Statistiques descriptives
+
+## Résumé des variables
+
+```{r}
+datasummary_skim(df1, histogram = FALSE,title = "")
+```
+
+Dans cette base de données, la musique avec le plus de streams est
+"Blinding Lights" de The Weekend avec 3.7 milliards d'écoutes. La base de
+données contient des musiques plutôt récentes avec 50% des musiques qui sont
+sorties après 2022. Le bpm moyen dans la base de donnée est de 122.5 ce qui
+correspond à un tempo rapide.
+
+```{r}
+datasummary_skim(df1,type="categorical", histogram = FALSE)
+```
+
+Ce tableau représente la fréquence d'apparition de chaque modalité pour les
+variables clé et mode. La clé la plus représenté est C# (c'est un do,
+tonalité neutre souvent perçue comme simple et directe) avec 14%. La
+moins représentée est D# (c'est un ré, peut avoir une sensation de
+légèreté et d'énergie) avec 3.5%. 58% des musiques ont une sonorité plutôt
+joyeuse et positive et 42% ont une sonorité plus sombre, introspective et
+mélancolique.
+
+## Graphiques de densité
+
+```{r}
+dens_valence <- ggplot(df, aes(x=valence_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_danceability <- ggplot(df, aes(x=danceability_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_energy <- ggplot(df, aes(x=energy_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_acousticness <- ggplot(df, aes(x=acousticness_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_instrumentalness <- ggplot(df, aes(x=instrumentalness_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_liveness <- ggplot(df, aes(x=liveness_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_speechiness <- ggplot(df, aes(x=speechiness_.)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+dens_bpm <- ggplot(df, aes(x=bpm)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="blue") 
+
+ggarrange(dens_valence,dens_danceability,dens_energy,dens_acousticness)
+```
+
+```{r}
+ggarrange(dens_instrumentalness,dens_liveness,dens_speechiness,dens_bpm )
+```
+
+Pour instrumentalness : la densité est concentrée vers 0, donc la plupart
+des musiques sont chantées, il y a peu de musiques spécifiquement
+instrumentales (sans paroles).
+
+Pour liveness : la densité est concentrée entre 0 et 25, donc la plupart
+des sons ont été enregistrés en studio.
+
+\newpage
+
+# ACP
+
+Nous avons décidé d'effectuer notre ACP sur les variables quantitatives
+qui caractérisent la musique, à savoir :
+
+-   BPM
+
+-   Danceability
+
+-   Valence
+
+-   Energy
+
+-   Acousticness
+
+-   Instrumentalness
+
+-   Liveness
+
+-   Speechiness
+
+De plus, nous avons rajouté en tant que variables supplémentaires les
+variables liées aux streams , aux nombres de playlists dans lesquelles
+les musiques apparraissent et leurs places dans les charts dans les
+différents services de streaming, ainsi que les variables key et mode.
+
+```{r}
+df2 <- df1[,c(7:24)]
+```
+
+## Matrice des corrélations
+
+```{r}
+quanti_v <- c(9,12:18)
+
+# Premier corrplot
+M1 <- cor(df2[,quanti_v])
+par(mfrow=c(1, 2))  # Une ligne, deux colonnes
+corrplot(M1, type="upper", diag=FALSE,tl.cex=0.7,cl.cex = 0.7)  
+
+# Deuxième corrplot
+M2 <- cor(df2[,quanti_v])
+corrplot(M2, type="upper", method="number", diag=FALSE, number.cex = 0.7,tl.cex = 0.7,cl.cex=0.7)  
+```
+
+\newpage
+
+Voici la matrice des corrélations.
+
+On peut voir notamment qu'il y a :
+
+-   Une corrélation positive (0.41) entre danceability et valence
+
+-   Une corrélation négative (-0.6) entre energy et acousticness
+
+-   Une corrélation positive (0.36) entre valence et energy 
+
+Globalement il existe quelques corrélations mais qui ne sont pas très
+fortes.
+
+```{r}
+quanti_sup <- c(1:8)
+quali_sup <- c(10,11)
+```
+
+```{r}
+resacp <- PCA(df2,quanti.sup = quanti_sup,quali.sup = quali_sup,graph = F)
+```
+
+## Inertie
+
+```{r}
+fviz_eig(resacp,addlabels=T, title = "Inertie des dimensions", 
+         barcolor = "cornflowerblue", barfill = "cornflowerblue")
+```
+
+On garde les 2 premiers axes qui représentent 40.2% de l'inertie.
+
+## Description des axes
+
+```{r}
+fviz_pca_var(resacp,col.var = "cos2",
+             gradient.cols=c("#00AFBB","#E7BB00","blue"))
+```
+
+Les variables qui expliquent l'axe 1 sont, à priori :
+
+-   Energy
+
+-   Acousticness
+
+-   Valence
+
+-   Danceability
+
+De plus, on peut voir que energy et accousticness ont l'air de
+s'opposer.
+
+Les variables qui expliquent l'axe 2 sont, à priori :
+
+-   Speechiness
+
+-   Liveness
+
+-   Danceability
+
+-   Acousticness
+
+-   Energy
+
+Les variables BPM et instrumentalness sont quant à elles mal
+représentées dans ces 2 premières dimensions donc on ne peut pas en dire
+davantage sur elles.
+
+De plus, on ne peut pas tirer grand chose des variables supplémentaires
+qui ne nous donne pas d'informations supplémentaires.
+
+```{r,fig.width=10.24, fig.height=5.76}
+a <- fviz_contrib(resacp, choice = "var", axes =1, title = "Contribution des variables dans la Dimension 1",
+                  fill = "cornflowerblue", color = "cornflowerblue")
+b <- fviz_contrib(resacp, choice = "var", axes =2, title = "Contribution des variables dans la Dimension 2",
+                  fill = "cornflowerblue", color = "cornflowerblue")
+ggarrange(a,b)
+```
+
+Les variables qui contribuent le plus à l'axe 1 sont energy,
+acousticness, valence et danceability, ce qui vient bien confirmer ce
+qu'on pouvait voir sur le graphique des variables.
+
+Sur la partie positive de l'axe 1, on va retrouver des musiques avec une
+forte energy, une forte valence et danceability mais avec une faible
+acousticness (car il y a opposition entre energy et acousticness).
+
+Les variables qui contribuent le plus à l'axe 2 sont surtout speechiness
+et danceability, et dans une moindre mesure acousticness, energy et
+liveness qui s'oppose légèrement à speechiness.
+
+Sur la partie positive de l'axe 2, on retrouve les musiques avec une
+forte speechiness et danceability mais une faible liveness.
+
+```{r}
+fviz_pca_ind(resacp, col.ind = "cos2",
+             gradient.cols=c("#00AFBB","#E7BB00","blue"))
+```
+
+```{r,fig.width=10.24, fig.height=5.76}
+c <- fviz_contrib(resacp, choice = "ind", axes =1, title = "Contribution des individus dans la Dimension 1",
+                           fill = "cornflowerblue", color = "cornflowerblue") +
+  theme_minimal() +
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+d <- fviz_contrib(resacp, choice = "ind", axes =2, title = "Contribution des individus dans la Dimension 2",
+                           fill = "cornflowerblue", color = "cornflowerblue") +
+  theme_minimal() +
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+ggarrange(c,d)
+```
+
+\newpage
+
+```{r}
+ax1 <- df1[c(424,796,18,859),c(18:24)]
+kable(ax1, "latex") %>%
+kable_styling(latex_options = c("stripped","scale_down"))
+
+```
+
+```{r}
+ax2 <- df1[c(659,870),c(18:24)]
+kable(ax2, "latex") %>%
+kable_styling(latex_options = c("stripped","scale_down"))
+```
+
+Voici 2 extraits de la base de données afin d'appuyer nos résultats.
+
+Le 1er tableau correspond aux individus situés aux extrémités de l'axe 1
+avec d'un côté les individus 424 et 796 du côté positif de l'axe 1 et
+les individus 18 et 859 du côté négatif. On voit bien que les individus
+659 et 870 ont de fortes valeurs pour les variables danceability,
+valence et energy et une faible valeur pour acousticness.
+
+De même pour les individus 18 et 859 qui eux ont une forte accousticness
+et donc une faible energy, valence et danceability.
+
+Pour le 2ème extrait, l'individu 659 se situe du côté positif de l'axe 2
+a une forte speechiness, une forte danceability et une faible liveness.
+Tandis que pour l'individu 870, c'est l'inverse, c'est à dire qu'il a
+une faible speechiness et une faible danceability et une forte liveness.
+
+\newpage
+
+# AFC
+
+On a ensuite réalisé une AFC, on a d'abord essayé de faire l'analyse sur
+key et mode car c'était les 2 seules variables qualitatives mais
+l'analyse ne donnait rien.
+
+On avait peu de variables qualitatives donc a transformé des
+quantitatives utilisées pour l'ACP en qualitatives en les découpant chacune
+en 4.
+
+Chaque variable est découpée en 4 modalités : -- quand la valeur est
+inférieure à 25, - quand la valeur est entre 25 et 50, + quand la valeur
+est entre 50 et 75, ++ quand la valeur est supérieure à 75. Sauf pour le
+BPM : -- inférieur à 60, - entre 60 et 120, + entre 120 et 167, ++
+supérieur à 167.
+
+L'analyse de l'AFC ne donnait rien non plus lorsqu'elle était réalisée
+avec key et une nouvelle qualitative, de même avec mode, le test du chi-2
+ne nous permettait pas de conclure à une corrélation entre les 2 variables 
+testées.
+
+
+
+
+```{r}
+df1 <- df1 %>% 
+    mutate(bpm_quart = case_when(df1$bpm <=60  ~ "0-25",
+                              df1$bpm <= 120 & df1$bpm > 60 ~ "25-50",
+                              df1$bpm <= 167 & df1$bpm > 120 ~ "50-75",
+                              df1$bpm > 167  ~ "75-100",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(danceability_quart = case_when(df1$danceability_. <= 25 ~ "dansant(--)",
+                              df1$danceability_. <= 50 & df1$danceability_. > 25 ~ "dansant(-)",
+                              df1$danceability_. <= 75 & df1$danceability_. > 50 ~ "dansant(+)",
+                              df1$danceability_. > 75 ~ "dansant(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(valence_quart = case_when(df1$valence_. <= 25 ~ "0-25",
+                              df1$valence_. <= 50 & df1$valence_. > 25 ~ "25-50",
+                              df1$valence_. <= 75 & df1$valence_. > 50 ~ "50-75",
+                              df1$valence_. > 75 ~ "75-100",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(energy_quart = case_when(df1$energy_. <= 25 ~ "energy(--)",
+                              df1$energy_. <= 50 & df1$energy_. > 25 ~ "energy(-)",
+                              df1$energy_. <= 75 & df1$energy_. > 50 ~ "energy(+)",
+                              df1$energy_. > 75 ~ "energy(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(acousticness_quart = case_when(df1$acousticness_. <= 25 ~ "acoustique (--)",
+                              df1$acousticness_. <= 50 & df1$acousticness_. > 25 ~ "acoustique (-)",
+                              df1$acousticness_. <= 75 & df1$acousticness_. > 50 ~ "acoustique(+)",
+                              df1$acousticness_. > 75 ~ "acoustique(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(instrumentalness_quart = case_when(df1$instrumentalness_. <= 25 ~ "instrumentalness(--)",
+                              df1$instrumentalness_. <= 50 & df1$instrumentalness_. > 25 ~ "instrumentalness(-)",
+                              df1$instrumentalness_. <= 75 & df1$instrumentalness_. > 50 ~ "instrumentalness(+)",
+                              df1$instrumentalness_. > 75 ~ "instrumentalness(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(liveness_quart = case_when(df1$liveness_. <= 25 ~ "liveness(--)",
+                              df1$liveness_. <= 50 & df1$liveness_. > 25 ~ "liveness(-)",
+                              df1$liveness_. <= 75 & df1$liveness_. > 50 ~ "liveness(+)",
+                              df1$liveness_. > 75 ~ "liveness(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+df1 <- df1 %>% 
+    mutate(speechiness_quart = case_when(df1$speechiness_. <= 25 ~ "speechiness(--)",
+                              df1$speechiness_. <= 50 & df1$speechiness_. > 25 ~ "speechiness(-)",
+                              df1$speechiness_. <= 75 & df1$speechiness_. > 50 ~ "speechiness(+)",
+                              df1$speechiness_. > 75 ~ "speechiness(++)",
+                              TRUE ~ "ERROR"))
+```
+
+```{r}
+pourcent <- function(x){x*100}
+```
+
+```{r}
+tab <- table(df1$energy_quart,df1$acousticness_quart)
+tab1 <- addmargins(tab)
+chisq.test(tab1)
+```
+
+Au final, on a fait l'analyse sur les variables energy et acousticness
+car elles étaient corrélées (pvalue \< 2.2e-16).
+
+```{r}
+chisq.test(tab1)
+resulttest <- chisq.test(tab1)
+resulttest$expected
+```
+
+```{r}
+resafc <- CA(tab,graph=F)
+```
+
+## Profil lignes
+
+```{r}
+tab %>% as.matrix() %>%  
+  proportions(margin = 1) %>% addmargins(margin=2) %>% pourcent %>% round(2) |> kable()
+```
+
+Les musiques qui ont une énergie très faible sont principalement
+regroupées avec celles qui ont une acousticness très élevée et
+inversement.
+
+## Profil colonnes
+
+```{r}
+tab %>% as.matrix() %>% 
+  proportions(margin = 2) %>% addmargins(margin=1) %>% pourcent %>% round(2) |> kable()
+```
+
+On voit que c'est principalement les musiques avec energy + et
+acousticness - qui s'associent.
+
+## Contributions aux lignes et aux colonnes
+
+```{r,fig.width=10.24, fig.height=5.76}
+e <-fviz_contrib(resafc,choice="row",axes=1, title = "Contribution des individus dans la Dimension 1",
+                           fill = "cornflowerblue", color = "cornflowerblue")
+f <-fviz_contrib(resafc,choice="col",axes=1, title = "Contribution des individus dans la Dimension 1",
+                           fill = "cornflowerblue", color = "cornflowerblue")
+
+ggarrange(e,f)
+```
+
+Pour la contribution des lignes, c'est surtout energy - et energy -- qui
+contribuent le plus tandis que pour les colonnes c'est surtout acousticness ++.
+
+## Visualisation graphique
+
+```{r}
+fviz_ca_biplot(resafc)
+```
+
+Sur le graphique, on voit que l'axe 1 représente l'opposition entre les
+modalités - et +, et l'axe 2 représente plutot l'opposition entre les
+modalité ++ / + et les modalités -- / -, par exemple energy -- opposée à
+energy -
+
+```{r}
+fviz_ca_biplot(resafc) + geom_path(color="blue")
+```
+
+En reliant les modalités d'une variable (ici energy), on peut observer
+un effet Guttman, les modalités sont ordonnées, de energy ++ à gauche à
+energy -- à droite, inversement pour la variable acoustique.
+
+On peut dessiner des groupes par exemple energy ++ avec acoustique --,
+energy + avec acoustique -, energy - avec acoustique + et energy -- avec
+acoustique ++.
+
+
+
+
+
+
+\newpage
+
+# ACM
+
+```{r}
+df3 <- df1[,c(7:14,16,17,25:32)]
+```
+
+```{r}
+quanti_trans <- c(11:18)
+quali_sup_acm <- c(9:10)
+quanti_sup_acm <- c(1:8)
+```
+
+
+Pour réaliser notre ACM, on a choisi d'utiliser les variables qui caractérisent
+la musique bpm, danceability,valence,energy,acousticness,instrumentalness,
+liveness et speechiness, que l'on a coupée en 4.
+
+```{r}
+resacm <- MCA(df3, quanti.sup = quanti_sup_acm, quali.sup = quali_sup_acm, graph = FALSE )
+```
+
+L'axe 1 permet de distinguer les individus qui
+prennent la modalité rare dansant -- et energy --, et d'autre part permet
+de distinguer un groupe qui se détache des autres en prenant acousticness ++.
+
+L'axe 2 met en avant les individus qui prennent la modalité rare
+speechiness + (individu 248, 936) et dansant -- (individu 470,448). Un
+groupe se détache légèrement et prend la modalité acousticness +
+
+Sur l'axe 3, on voit un groupe se détacher et prendre la modalité
+instrumentalness - .
+
+L'axe 4, on distingue un groupe avec instrumentalness ++ en bas, le
+groupe dansant -- en haut
+
+```{r}
+fviz_eig(resacm,addlabels=T, title = "Inertie des dimensions",
+                           barcolor = "cornflowerblue", barfill = "cornflowerblue")
+```
+Nous avons choisi les 4 premiers axes ce qui nous permet de garder `r round(resacm$eig[4,3],2)`% d'inertie 
+
+## Dim 1 / Dim 2
+
+### Variables
+
+```{r,fig.width=10.24, fig.height=5.76}
+color_var <- c("bpm_quart","bpm_quart","bpm_quart",
+               "dansant_quart","dansant_quart","dansant_quart","dansant_quart",
+               "valence_quart","valence_quart","valence_quart","valence_quart",
+               "energy_quart","energy_quart","energy_quart","energy_quart",
+               "acoustique_quart","acoustique_quart","acoustique_quart","acoustique_quart",
+               "instrumentalness_quart","instrumentalness_quart","instrumentalness_quart","instrumentalness_quart",
+               "liveness_quart","liveness_quart","liveness_quart","liveness_quart",
+               "speechiness_quart","speechiness_quart","speechiness_quart")
+fviz_mca_var(resacm, axes=c(1,2), invisible=c("ind","quali.sup"),
+             autoLab="y", shape.var = 19,pointsize = 1.5, col.var = color_var, 
+             title = "Représentation des Variables dans l'Espace Dim. 1/Dim. 2 - ACM") + 
+  geom_point(aes(color = color_var)) +
+  scale_color_discrete(name = "Variable :")
+par(mfrow=c(2,1))
+fviz_mca_var(resacm, axes=c(1,2), invisible=c("ind","quali.sup"),
+             autoLab="y", shape.var = 19,pointsize = 2, col.var = color_var, 
+             title = "Représentation des Variables dans l'Espace Dim. 1/Dim. 2 - ACM",
+             label ="none") + 
+  geom_point(aes(color = color_var)) +
+  scale_color_discrete(name = "Variable :")
+
+```
+Nous pouvons apercevoir deux groupes de modalités se détacher :
+\newline - le groupe dansant(--) et energy(--) en haut à droite
+\newline - speechiness(+) en bas sur l'axe 2
+
+\newpage
+```{r}
+contrib_v1 <- fviz_contrib(resacm,choice="var",axes=1, title = "Contribution des variables dans la Dimension 1",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(color = "transparent")) 
+contrib_v2 <- fviz_contrib(resacm,choice="var",axes=2, title = "Contribution des variables dans la Dimension 2",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(color = "transparent"))
+contrib_v3 <- fviz_contrib(resacm,choice="var",axes=3, title = "Contribution des variables dans la Dimension 3",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(color = "transparent"))
+contrib_v4 <- fviz_contrib(resacm,choice="var",axes=4, title = "Contribution des variables dans la Dimension 4",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_text(color = "transparent"))
+```
+
+```{r}
+croissant_d1 <- resacm$var$contrib[,1] |> sort(decreasing = TRUE) 
+croissant_d2 <- resacm$var$contrib[,2] |> sort(decreasing = TRUE) 
+croissant_d3 <- resacm$var$contrib[,3] |> sort(decreasing = TRUE) 
+croissant_d4 <- resacm$var$contrib[,4] |> sort(decreasing = TRUE) 
+
+```
+
+```{r,fig.width=10.24, fig.height=5.76}
+contrib_v1
+```
+Les modalités qui contribuent le plus dans la dimension 1 sont acoustique(++) (`r round(croissant_d1[1],2)`%), energy(--) (`r round(croissant_d1[2],2)`%), dansant(--) (`r round(croissant_d1[3],2)`%), energy(-) (`r round(croissant_d1[4],2)`%) et valence(-) (`r round(croissant_d1[5],2)`%).
+
+
+```{r,fig.width=10.24, fig.height=5.76}
+contrib_v2
+```
+Les modalités qui contribuent le plus dans la dimension 1 sont acoustique(+) (`r round(croissant_d2[1],2)`%), energy(++) (`r round(croissant_d2[2],2)`%), energy(-) (`r round(croissant_d2[3],2)`%), energy(--) (`r round(croissant_d2[4],2)`%) et acoustique(--) (`r round(croissant_d2[5],2)`%)
+
+### Individus
+
+```{r,fig.width=10.24, fig.height=5.76}
+indices <- c(470, 248)
+ind_coords <- resacm$ind$coord[indices, ]
+ind_labels <- rownames(resacm$ind$coord)[indices]
+fviz_mca_ind(resacm,col.ind = "cornflowerblue",geom.ind = "point", graph = FALSE, axes=c(1,2),
+             title="Représentation des Individus - ACM (Axes 1/2)") +
+  geom_text(data = data.frame(x = ind_coords[, 1], y = ind_coords[,2], label = ind_labels),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5),
+                  hjust = c(0,0),
+                  size = 3)
+```
+
+```{r}
+e <- fviz_contrib(resacm,choice="ind",axes=1, title = "Contribution des individus dans la Dimension 1",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+f <- fviz_contrib(resacm,choice="ind",axes=2, title = "Contribution des individus dans la Dimension 2",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() +
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+g <- fviz_contrib(resacm,choice="ind",axes=3, title = "Contribution des individus dans la Dimension 3",
+                           fill = "cornflowerblue", color = "cornflowerblue") + 
+  theme_minimal() + 
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+h <- fviz_contrib(resacm,choice="ind",axes=4, title = "Contribution des individus dans la Dimension 4",
+                           fill = "cornflowerblue", color = "cornflowerblue") +
+  theme_minimal() +
+  theme(axis.text = element_text(color = "transparent")) +
+  labs(x = "Individus")
+```
+
+
+```{r,fig.width=10.24, fig.height=5.76}
+ggarrange(e,f)
+```
+Pour la dimension 1 nous pouvons voir une tendance particulière, il n'y a pas une grosse proportion qui ont une contribution au dessus de la moyenne.
+Pour la dimension 2 nous avons une tendance qui se généralise avec près de un tiers de la proportion d'individus qui ont une contribution au dessus de la contribution moyenne.
+
+```{r, results='asis'}
+abcv_1 <- resacm$ind$contrib[,1] |> sort(decreasing = TRUE)
+abcv_2 <- resacm$ind$contrib[,2] |> sort(decreasing = TRUE)
+abcv_3 <- resacm$ind$contrib[,3] |> sort(decreasing = TRUE)
+abcv_4 <- resacm$ind$contrib[,4] |> sort(decreasing = TRUE)
+
+abcv_11 <- abcv_1[c(1:12)] |> 
+  kable(col.names = c("Individu", "Contribution en %")) |> 
+  kable_styling( 
+    full_width = FALSE,
+    position = "left", font_size = 11,
+    bootstrap_options = c("striped", "hover"))
+
+abcv_22 <- abcv_2[c(1:12)] |> 
+  kable(col.names = c("Individu", "Contribution en %")) |> 
+  kable_styling( 
+    full_width = FALSE,
+    position = "left", font_size = 11,
+    bootstrap_options = c("striped", "hover"))
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{\\centering Tableau des contributions \\newline des individus dans la Dim1}
+      \\centering",
+        abcv_11,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{\\centering Tableau des contributions \\newline des individus dans la Dim2}",
+        abcv_22,
+    "\\end{minipage} 
+\\end{table}"
+))
+```
+Les individus qui contribuent le plus à la dimension 1 sont le 470, le 388, le 698 et le 802; et les individus qui contribuent le plus à la dimension 2 sont le 470, le 248, le 448 et le 941.
+
+```{r,fig.width=8, fig.height=4.5}
+## acoustique
+graph_acoustique_ind <- fviz_mca_ind(resacm, col.ind =df3$acousticness_quart, geom.ind = "point", graph = FALSE,
+                                     title = "Distribution des Individus  - ACM (Axes 1/2)")
+indices <- c(470, 388,698,802,705,248,448,941)
+ind_coords_acoustique <- resacm$ind$coord[indices, ]
+ind_labels_acoustique <- rownames(resacm$ind$coord)[indices]
+graph_acoustique_ind + geom_text(data = data.frame(x = ind_coords_acoustique[, 1], y = ind_coords_acoustique[, 2], label = ind_labels_acoustique),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.5,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,0,+0.5,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "acousticness_quart :")
+## energy
+graph_energy_ind <- fviz_mca_ind(resacm, col.ind =df3$energy_quart, geom.ind = "point", graph = FALSE,
+                                     title = "Distribution des Individus  - ACM (Axes 1/2)")
+indices <- c(470, 388,698,802,705,248,448,941)
+ind_coords_energy <- resacm$ind$coord[indices, ]
+ind_labels_energy <- rownames(resacm$ind$coord)[indices]
+graph_energy_ind + geom_text(data = data.frame(x = ind_coords_energy[, 1], y = ind_coords_energy[,2], label = ind_labels_energy),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.5,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,0,+0.5,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "energy_quart :")
+## danceability
+graph_danceability_ind <- fviz_mca_ind(resacm, col.ind =df3$danceability_quart, geom.ind = "point", graph = FALSE,
+                                     title = "Distribution des Individus  - ACM (Axes 1/2)")
+indices <- c(470, 388,698,802,705,248,448,941)
+ind_coords_danceability <- resacm$ind$coord[indices, ]
+ind_labels_danceability <- rownames(resacm$ind$coord)[indices]
+graph_danceability_ind + 
+  geom_text(data = data.frame(x = ind_coords_danceability[, 1], y = ind_coords_danceability[,2], label = ind_labels_danceability),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.5,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,0,+0.5,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "dansant_quart :")
+  
+
+```
+
+\newpage
+
+## Dim 3 / Dim 4
+
+### Variables
+
+```{r,fig.width=10.6, fig.height=5.76}
+color_var <- c("bpm_quart","bpm_quart","bpm_quart",
+               "dansant_quart","dansant_quart","dansant_quart","dansant_quart",
+               "valence_quart","valence_quart","valence_quart","valence_quart",
+               "energy_quart","energy_quart","energy_quart","energy_quart",
+               "acoustique_quart","acoustique_quart","acoustique_quart","acoustique_quart",
+               "instrumentalness_quart","instrumentalness_quart","instrumentalness_quart","instrumentalness_quart",
+               "liveness_quart","liveness_quart","liveness_quart","liveness_quart",
+               "speechiness_quart","speechiness_quart","speechiness_quart")
+fviz_mca_var(resacm, axes=c(3,4), invisible=c("ind","quali.sup"),
+             autoLab="y", shape.var = 19,pointsize = 1.5, col.var = color_var, 
+             title = "Représentation des Variables dans l'Espace Dim. 3/Dim. 4 - ACM") + 
+  geom_point(aes(color = color_var)) +
+  scale_color_discrete(name = "Variables :")
+par(mfrow=c(2,1))
+fviz_mca_var(resacm, axes=c(3,4), invisible=c("ind","quali.sup"),
+             autoLab="y", shape.var = 19,pointsize = 2, col.var = color_var, 
+             title = "Représentation des Variables dans l'Espace Dim. 3/Dim. 4 - ACM",
+             label ="none") + 
+  geom_point(aes(color = color_var)) +
+  scale_color_discrete(name = "Variables :")
+
+```
+
+```{r,fig.width=10.24, fig.height=5.76}
+contrib_v3
+```
+Les modalités qui contribuent le plus dans la dimension 1 sont instumentalness(-) (`r round(croissant_d3[1],2)`%), bpm(++) (`r round(croissant_d3[2],2)`%), speechiness(-) (`r round(croissant_d3[3],2)`%), acoustique(+) (`r round(croissant_d3[4],2)`%) et valence(--) (`r round(croissant_d3[5],2)`%)
+
+```{r,fig.width=10.24, fig.height=5.76}
+contrib_v4
+```
+Les modalités qui contribuent le plus dans la dimension 1 sont dansant(-) (`r round(croissant_d1[1],2)`%), dansant(++) (`r round(croissant_d1[2],2)`%), valence(++) (`r round(croissant_d1[3],2)`%), valence(-) (`r round(croissant_d1[4],2)`%) et acosutique(++) (`r round(croissant_d1[5],2)`%)
+
+\newpage
+### Individus
+
+```{r,fig.width=10.24, fig.height=5.76}
+fviz_mca_ind(resacm,col.ind = "cornflowerblue",geom.ind = "point", graph = FALSE, axes=c(3,4),
+             title="Représentation des Individus - ACM (Axes 3/4)")
+
+```
+
+```{r,fig.width=10.24, fig.height=5.76}
+ggarrange(g,h)
+```
+Pour la dimension 3 et 4, nous pouvons voir une tendance particulière, il n'y a pas une grosse proportion qui ont une contribution au dessus de la moyenne.
+
+
+```{r, results='asis'}
+abcv_33 <- abcv_3[c(1:12)] |> 
+  kable(col.names = c("Individu", "Contribution en %")) |> 
+  kable_styling( 
+    full_width = FALSE,
+    position = "left", font_size = 11,
+    bootstrap_options = c("striped", "hover"))
+
+abcv_44 <- abcv_4[c(1:12)] |> 
+  kable(col.names = c("Individu", "Contribution en %")) |> 
+  kable_styling( 
+    full_width = FALSE,
+    position = "left", font_size = 11,
+    bootstrap_options = c("striped", "hover"))
+cat(c("\\begin{table}[!htb]
+    \\begin{minipage}{.5\\linewidth}
+      \\caption{\\centering Tableau des contributions \\newline des individus dans la Dim3}
+      \\centering",
+        abcv_33,
+    "\\end{minipage}%
+    \\begin{minipage}{.5\\linewidth}
+      \\centering
+        \\caption{\\centering Tableau des contributions \\newline des individus dans la Dim4}",
+        abcv_44,
+    "\\end{minipage} 
+\\end{table}"
+))
+```
+Les individus qui contribuent le plus  à la dimension 3 sont le 698, le 327, le 578 et le 943; et les individus qui contribuent le plus à la dimension 4 sont le 470, le 448, le 388 et le 918.
+
+
+```{r,fig.width=8, fig.height=4.5}
+## bpm
+graph_bpm_ind <- fviz_mca_ind(resacm, col.ind =df3$bpm_quart, geom.ind = "point", graph = FALSE, axes=c(3,4),
+                                     title = "Représentation des Individus  - ACM (Axes 3/4)")
+indices <- c(698,327,578,943,470,448,388,918)
+ind_coords_bpm <- resacm$ind$coord[indices, ]
+ind_labels_bpm <- rownames(resacm$ind$coord)[indices]
+graph_bpm_ind + geom_text(data = data.frame(x = ind_coords_bpm[, 3], y = ind_coords_bpm[, 4], label = ind_labels_bpm),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.2,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,-0.2,0,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "dansant_quart :")
+## instrumentalness
+graph_instrumentalness_ind <- fviz_mca_ind(resacm, col.ind =df3$instrumentalness_quart, geom.ind = "point", graph = FALSE, axes=c(3,4),
+                                     title = "Représentation des Individus  - ACM (Axes 3/4)")
+indices <- c(698,327,578,943,470,448,388,918)
+ind_coords_instrumentalness <- resacm$ind$coord[indices, ]
+ind_labels_instrumentalness <- rownames(resacm$ind$coord)[indices]
+graph_instrumentalness_ind + geom_text(data = data.frame(x = ind_coords_instrumentalness[, 3], 
+                                                         y = ind_coords_instrumentalness[, 4], 
+                                                         label = ind_labels_instrumentalness),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.2,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,-0.2,0,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "instumentalness_quart :")
+## danceability
+graph_danceability_ind <- fviz_mca_ind(resacm, col.ind =df3$danceability_quart, geom.ind = "point", graph = FALSE, axes=c(3,4),
+                                     title = "Représentation des Individus  - ACM (Axes 3/4)")
+indices <- c(698,327,578,943,470,448,388,918)
+ind_coords_danceability <- resacm$ind$coord[indices, ]
+ind_labels_danceability <- rownames(resacm$ind$coord)[indices]
+graph_danceability_ind + geom_text(data = data.frame(x = ind_coords_danceability[, 3], 
+                                                         y = ind_coords_danceability[, 4], 
+                                                         label = ind_labels_danceability),
+                  aes(x = x, y = y, label = label),
+                  vjust = c(-0.5, -0.5,-0.2,-0.5,-0.5,-0.5,-0.5,-0.5),
+                  hjust = c(0,0,-0.2,0,0,0,0,0),
+                  size = 3) +
+  scale_color_discrete(name = "bpm_quart :")
+```
+
+### Eta
+
+```{r}
+eta <- (get_mca_var(resacm, element="mca.cor")$coord) %>% as.data.frame() 
+names(eta) <- c("dim1", "dim2", "dim3", "dim4")
+```
+
+```{r}
+round(eta[order(eta[,1], decreasing = TRUE),1:4], 2) |> kable()
+```
+\vspace{1cm}
+```{r}
+eta_12 <- ggplot(eta) + aes(x = dim1, y =dim2,label = rownames(eta)) + 
+  geom_point( col = "red" ) + theme_minimal() +
+  lims( x=c(0,1), y=c(0,1)) + geom_text_repel( col = "red") +
+  labs(title = "Variables - MCA", x = "Dim1 (9.22%)", y = "Dim2 (5.96%)")
+eta_34 <- ggplot(eta) + aes(x = dim3, y =dim4,label = rownames(eta)) + 
+  geom_point( col = "red") + theme_minimal() +
+  lims( x=c(0,1), y=c(0,1)) + geom_text_repel(col = "red" ) +
+  labs(title = "Variables - MCA", x = "Dim3 (5.7%)", y = "Dim4 (5.6%)")
+```
+
+```{r}
+ggarrange(eta_12,eta_34)
+```
+
+
+
+
+
+\newpage
+
+# Classification non supervisée
+
+On a ensuite réalisé une classification hiérarchique.
+
+```{r}
+spot_hcpc = HCPC(resacm,consol=T,nb.clust=3,graph=F)
+```
+
+```{r,fig.width=10.24, fig.height=5.76}
+fviz_dend(spot_hcpc, k_colors = "black",show_labels = F)
+```
+
+Sur le dendrogramme, on peut voir qu'il serait cohérent de découper en 3
+ou 4 groupes.
+
+```{r,fig.width=10.24, fig.height=5.76}
+plot(spot_hcpc,choice="bar")
+```
+
+Le graphique du gain d'inertie inter groupe nous montre qu'on peut
+choisir de découper 3 ou 4 groupes, au delà, le gain d'inertie est assez faible.
+
+A partir de ces informations, on a décidé de choisir un découpage en 3
+groupes.
+
+```{r}
+fviz_dend(spot_hcpc,k_colors = c("black","green","red"),show_labels = F)
+```
+\newpage
+```{r}
+spot_hcpc_2 = HCPC(resacm,consol=F,nb.clust=3,graph=F)
+```
+
+```{r,fig.width=9.60, fig.height=5.40}
+conso_off <- plot.HCPC(spot_hcpc_2,choice='map',draw.tree=FALSE,title='Plan factoriel sans consolidation')
+conso_on <- plot.HCPC(spot_hcpc,choice='map',draw.tree=FALSE,title='Plan factoriel avec consolidation')
+```
+
+Le clustering avec consolidation sépare légèrement mieux les groupes,
+par exemple, l'individu 698 qui était dans le cluster 2 passe dans le
+cluster 3, ce qui est plus cohérent.
+
+On garde donc le clustering avec consolidation.
+
+```{r}
+para <- spot_hcpc$desc.ind$para
+dist <- spot_hcpc$desc.ind$dist
+```
+
+```{r}
+par1 <- names(para[[1]])
+par2 <- names(para[[2]])
+par3 <- names(para[[3]])
+dist1 <- names(dist[[1]])
+dist2 <- names(dist[[2]])
+dist3 <- names(dist[[3]])
+```
+
+## Parangon
+
+Les parangons : ce sont les individus qui sont le plus au centre de leur
+cluster
+
+```{r}
+spot_hcpc$desc.ind$para
+```
+
+Les parangons et leur distance au centre du cluster.
+
+
+
+\vspace{3cm}
+## Distant
+
+```{r}
+spot_hcpc$desc.ind$dist
+
+```
+
+Les individus les plus éloignés du centre du cluster.
+
+
+\newpage
+
+## Description des clusters
+
+### Cluster 1
+
+
+```{r,fig.show='hold'}
+options(scipen = 0, digits = 4)
+spot_hcpc$desc.var$category$"1"%>% 
+  kable(digits=c(1, 1, 1, 200, 2)) %>%
+  kable_styling(font_size = 9,latex_options = "HOLD_position")
+```
+
+
+
+91.1% des musiques prenant acoustique -- sont dans ce cluster, ce qui
+représente 75% de la population de ce cluster.
+
+96.7% des musiques prenant energy ++ et 82% des musiques prenant energy + se
+retrouvent dans ce cluster, ce qui représente à eux deux quasiment 100%
+des individus de ce cluster.
+
+Valence + et valence ++ représentent à eux deux quasiment 60% des
+individus du cluster.
+
+86% des musiques prenant dansant ++ sont dans ce cluster, ce qui représente
+39% des individus de ce cluster.
+
+98.7% des ind de ce cluster prennent la modalité instrumentalness --
+
+On peut en conclure que ce cluster comporte globalement des musiques
+plus énergiques, peu acoustiques et plutot dansantes.
+
+
+\newpage
+
+### Cluster 2
+
+```{r}
+options(scipen = 0, digits = 4)
+spot_hcpc$desc.var$category$"2"%>% 
+  kable(digits=c(1, 1, 1, 200, 2) ) %>%
+  kable_styling(font_size = 9,latex_options = "HOLD_position" )
+```
+
+Toutes les musiques prenant la modalité liveness ++ sont dans le cluster (il y a
+peu d'individus qui ont cette modalité, ils ne représentent que 3% du
+cluster).
+
+63.6% des individus du cluster prennent la modalité energy - ce qui
+représente 92.7% des individus prenant cette modalité dans la base de
+données.
+
+92% des individus prenant la modalité acoustique + se retrouvent dans ce
+cluster et 77.6% des individus prenant la modalité acoustique ++ se
+retrouvent dans ce cluster, ces modalités concernent en tout 60% des
+individus du cluster.
+
+50% des sons qui prennent dansant - sont dans ce cluster et cela
+représente 25.6% des individus du cluster 2.
+
+Ce cluster contient des musiques qui sont globalement assez acoustiques
+et moins énergiques.
+
+
+
+\newpage
+
+
+### Cluster 3
+
+```{r}
+options(scipen = 0, digits = 4)
+spot_hcpc$desc.var$category$"3"%>% 
+  kable(digits=c(1, 1, 1, 200, 2) ) %>%
+  kable_styling(font_size = 9,latex_options = "HOLD_position" )
+```
+
+88.9% prennent la modalité energy -- et tout les individus qui ont la
+modalité energy -- sont dans ce cluster.
+
+Il y a 83% des individus de ce cluster qui prennent la modalité acoustique ++.
+
+Tous les individus qui prennent la modalité dansant -- sont dans ce
+cluster.
+
+55% des individus dans ce cluster prennent la modalité valence --.
+
+Ce cluster possède moins d'individus, il rassemble les musiques qui sont
+plus calmes, plus acoustiques, et moins dansantes.
+
+
+
+
+
+
+\newpage
+
+
+### Exemple
+
+
+
+Pour montrer nos résultats vis-à-vis des clusters , voici le tableau des individus des parangons avec leurs caractéristiques musicales.
+
+
+```{r}
+    
+df1[c(par1, par2, par3),c(25:29)] %>% kable() %>%
+  kable_styling( 
+    latex_options = "HOLD_position",
+    full_width = FALSE,
+    position = "center", font_size = 9,
+    bootstrap_options = c("striped", "hover", "condensed")
+  )  %>% pack_rows(
+  "Cluster 1", 1, length(par1)
+) %>% pack_rows(
+  "Cluster 2", length(par1) +1 , length(par1) + length(par2)
+) %>% pack_rows(
+  "Cluster 3", length(par1)+ length(par2)  +1 , length(par1) + length(par2) + length(par3)
+) 
+
+
+
+```
+
+
+
+```{r,fig.align='left'}
+df1[c(par1, par2, par3),c(30:32)] %>% kable() %>%
+  kable_styling( 
+    latex_options = "HOLD_position",
+    full_width = FALSE,
+    position = "center", font_size = 9,
+    bootstrap_options = c("striped", "hover", "condensed")
+  )  %>% pack_rows(
+  "Cluster 1", 1, length(par1)
+) %>% pack_rows(
+  "Cluster 2", length(par1) +1 , length(par1) + length(par2)
+) %>% pack_rows(
+  "Cluster 3", length(par1)+ length(par2)  +1 , length(par1) + length(par2) + length(par3)
+) 
+```
+
+
+
+\newpage
+
+Et, voici le tableau des individus des distants avec leurs caractéristiques musicales.
+
+
+```{r,fig.pos='b'}
+df1[c(dist1, dist2, dist3),c(25:29)] %>% 
+  kable() %>%
+  kable_styling( 
+    latex_options = "HOLD_position",
+    full_width = FALSE,
+    position = "center", font_size = 9,
+    bootstrap_options = c("striped", "hover", "condensed")
+  )  %>%
+  pack_rows(
+    "Cluster 1", 1, length(dist1)
+  ) %>% pack_rows(
+    "Cluster 2", length(dist1) +1 , length(dist1) + length(dist2)
+  ) %>% pack_rows(
+    "Cluster 3", length(dist1)+ length(dist2)  +1 , length(dist1) + length(dist2) + length(dist3)
+  ) 
+```
+
+
+
+
+```{r,fig.pos='b'}
+df1[c(dist1, dist2, dist3),c(30:32)] %>% 
+  kable() %>%
+  kable_styling( 
+    latex_options = "HOLD_position",
+    full_width = FALSE,
+    position = "center", font_size = 9,
+    bootstrap_options = c("striped", "hover", "condensed")
+  )  %>%
+  pack_rows(
+    "Cluster 1", 1, length(dist1)
+  ) %>% pack_rows(
+    "Cluster 2", length(dist1) +1 , length(dist1) + length(dist2)
+  ) %>% pack_rows(
+    "Cluster 3", length(dist1)+ length(dist2)  +1 , length(dist1) + length(dist2) + length(dist3)
+  ) 
+```
+
+
+
+
